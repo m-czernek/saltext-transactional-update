@@ -277,11 +277,14 @@ transaction.
 
 import logging
 
-import salt.client.ssh.state
-import salt.client.ssh.wrapper.state
 import salt.exceptions
 import salt.utils.args
-from salt.modules.state import _check_queue, _prior_running_states, _wait, running
+import salt.utils.json
+import salt.utils.path
+from salt.modules.state import _check_queue
+from salt.modules.state import _prior_running_states
+from salt.modules.state import _wait
+from salt.modules.state import running
 
 __func_alias__ = {"apply_": "apply"}
 
@@ -292,8 +295,9 @@ def __virtual__():
     """
     transactional-update command is required.
     """
+    # pylint: disable-next=global-statement
     global _check_queue, _wait, _prior_running_states, running
-    if __utils__["path.which"]("transactional-update"):
+    if salt.utils.path.which("transactional-update"):
         _check_queue = salt.utils.functools.namespaced_function(_check_queue, globals())
         _wait = salt.utils.functools.namespaced_function(_wait, globals())
         _prior_running_states = salt.utils.functools.namespaced_function(
@@ -364,7 +368,7 @@ def transactional():
         salt microos transactional_update transactional
 
     """
-    return bool(__utils__["path.which"]("transactional-update"))
+    return bool(salt.utils.path.which("transactional-update"))
 
 
 def in_transaction():
@@ -870,15 +874,8 @@ def rollback(snapshot=None):
         salt microos transactional_update rollback
 
     """
-    if (
-        snapshot
-        and isinstance(snapshot, str)
-        and snapshot != "last"
-        and not snapshot.isnumeric()
-    ):
-        raise salt.exceptions.CommandExecutionError(
-            "snapshot should be a number or 'last'"
-        )
+    if snapshot and isinstance(snapshot, str) and snapshot != "last" and not snapshot.isnumeric():
+        raise salt.exceptions.CommandExecutionError("snapshot should be a number or 'last'")
     cmd = ["transactional-update"]
     cmd.append("rollback")
     if snapshot:
@@ -963,7 +960,7 @@ def call(function, *args, **kwargs):
 
         # Process "real" result in stdout
         try:
-            data = __utils__["json.find_json"](ret_stdout)
+            data = salt.utils.json.find_json(ret_stdout)
             local = data.get("local", data)
             if isinstance(local, dict):
                 if "retcode" in local:

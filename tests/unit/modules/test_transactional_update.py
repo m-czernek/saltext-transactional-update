@@ -1,10 +1,12 @@
-import pytest
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
+import pytest
 import salt.loader.context
 import salt.modules.state as statemod
-import salt.modules.transactional_update as tu
 from salt.exceptions import CommandExecutionError
-from tests.support.mock import MagicMock, patch
+
+import saltext.transactional_update.modules.transactional_update as tu
 
 pytestmark = [
     pytest.mark.skip_on_windows(reason="Not supported on Windows"),
@@ -18,13 +20,14 @@ def configure_loader_modules():
         tu: {
             "__salt__": {},
             "__utils__": {"files.rm_rf": MagicMock()},
-            "__pillar__": salt.loader.context.NamedLoaderContext(
-                "__pillar__", loader_context, {}
-            ),
+            "__pillar__": salt.loader.context.NamedLoaderContext("__pillar__", loader_context, {}),
             "__opts__": {"extension_modules": "", "cachedir": "/tmp/"},
         },
         statemod: {"__salt__": {}, "__context__": {}},
     }
+
+
+setattr(configure_loader_modules, "_pytestfixturefunction", True)
 
 
 def test__global_params_no_self_update():
@@ -126,11 +129,11 @@ def test_transactional_transactional():
     matrix = (("/usr/sbin/transactional-update", True), ("", False))
 
     for path_which, result in matrix:
-        utils_mock = {"path.which": MagicMock(return_value=path_which)}
+        utils_mock = MagicMock(return_value=path_which)
 
-        with patch.dict(tu.__utils__, utils_mock):
+        with patch("salt.utils.path.which", utils_mock):
             assert tu.transactional() is result
-            utils_mock["path.which"].assert_called_with("transactional-update")
+            utils_mock.assert_called_with("transactional-update")
 
 
 def test_in_transaction():
@@ -143,10 +146,10 @@ def test_in_transaction():
     )
 
     for path_which, in_chroot, result in matrix:
-        utils_mock = {"path.which": MagicMock(return_value=path_which)}
+        utils_mock = MagicMock(return_value=path_which)
         salt_mock = {"chroot.in_chroot": MagicMock(return_value=in_chroot)}
 
-        with patch.dict(tu.__utils__, utils_mock):
+        with patch("salt.utils.path.which", utils_mock):
             with patch.dict(tu.__salt__, salt_mock):
                 assert tu.in_transaction() is result
 
@@ -167,9 +170,7 @@ def test_commands_with_global_params():
         "patch",
         "migration",
     ]:
-        salt_mock = {
-            "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-        }
+        salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
         with patch.dict(tu.__salt__, salt_mock):
             assert getattr(tu, cmd)() == "output"
             salt_mock["cmd.run_all"].assert_called_with(
@@ -178,11 +179,7 @@ def test_commands_with_global_params():
                     "--non-interactive",
                     "--drop-if-no-change",
                     "--no-selfupdate",
-                    (
-                        cmd.replace("_", ".")
-                        if cmd.startswith("grub")
-                        else cmd.replace("_", "-")
-                    ),
+                    (cmd.replace("_", ".") if cmd.startswith("grub") else cmd.replace("_", "-")),
                 ]
             )
 
@@ -195,9 +192,7 @@ def test_run_error():
 
 def test_run_string():
     """Test transactional_update.run with command as string"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.run("cmd --flag p1 p2") == "output"
         salt_mock["cmd.run_all"].assert_called_with(
@@ -218,9 +213,7 @@ def test_run_string():
 
 def test_run_array():
     """Test transactional_update.run with command as array"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.run(["cmd", "--flag", "p1", "p2"]) == "output"
         salt_mock["cmd.run_all"].assert_called_with(
@@ -242,9 +235,7 @@ def test_run_array():
 def test_pkg_commands():
     """Test transactional_update.pkg_* commands"""
     for cmd in ["pkg_install", "pkg_remove", "pkg_update"]:
-        salt_mock = {
-            "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-        }
+        salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
         with patch.dict(tu.__salt__, salt_mock):
             assert getattr(tu, cmd)("pkg1", "pkg2 pkg3", "--arg") == "output"
             salt_mock["cmd.run_all"].assert_called_with(
@@ -271,50 +262,34 @@ def test_rollback_error():
 
 def test_rollback_default():
     """Test transactional_update.rollback with default snapshot"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.rollback() == "output"
-        salt_mock["cmd.run_all"].assert_called_with(
-            ["transactional-update", "rollback"]
-        )
+        salt_mock["cmd.run_all"].assert_called_with(["transactional-update", "rollback"])
 
 
 def test_rollback_snapshot_number():
     """Test transactional_update.rollback with numeric snapshot"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.rollback(10) == "output"
-        salt_mock["cmd.run_all"].assert_called_with(
-            ["transactional-update", "rollback", 10]
-        )
+        salt_mock["cmd.run_all"].assert_called_with(["transactional-update", "rollback", 10])
 
 
 def test_rollback_snapshot_str():
     """Test transactional_update.rollback with string snapshot"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.rollback("10") == "output"
-        salt_mock["cmd.run_all"].assert_called_with(
-            ["transactional-update", "rollback", "10"]
-        )
+        salt_mock["cmd.run_all"].assert_called_with(["transactional-update", "rollback", "10"])
 
 
 def test_rollback_last():
     """Test transactional_update.rollback with last snapshot"""
-    salt_mock = {
-        "cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})
-    }
+    salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": "output", "retcode": 0})}
     with patch.dict(tu.__salt__, salt_mock):
         assert tu.rollback("last") == "output"
-        salt_mock["cmd.run_all"].assert_called_with(
-            ["transactional-update", "rollback", "last"]
-        )
+        salt_mock["cmd.run_all"].assert_called_with(["transactional-update", "rollback", "last"])
 
 
 def test_pending_transaction():
@@ -326,11 +301,11 @@ def test_pending_transaction():
     )
 
     for in_transaction, snapshots, result in matrix:
-        salt_mock = {
-            "cmd.run_all": MagicMock(return_value={"stdout": snapshots, "retcode": 0})
-        }
+        salt_mock = {"cmd.run_all": MagicMock(return_value={"stdout": snapshots, "retcode": 0})}
 
-        tu_in_transaction = "salt.modules.transactional_update.in_transaction"
+        tu_in_transaction = (
+            "saltext.transactional_update.modules.transactional_update.in_transaction"
+        )
         with patch(tu_in_transaction) as in_transaction_mock:
             in_transaction_mock.return_value = in_transaction
             with patch.dict(tu.__salt__, salt_mock):
@@ -342,7 +317,7 @@ def test_pending_transaction():
 
 def test_pending_transaction_in_transaction():
     """Test transactional_update.pending_transaction when in transaction"""
-    tu_in_transaction = "salt.modules.transactional_update.in_transaction"
+    tu_in_transaction = "saltext.transactional_update.modules.transactional_update.in_transaction"
     with patch(tu_in_transaction) as in_transaction_mock:
         in_transaction_mock.return_value = True
         with pytest.raises(CommandExecutionError):
@@ -357,15 +332,11 @@ def test_call_fails_input_validation():
 
 def test_call_fails_function():
     """Test transactional_update.chroot when fails the function"""
-    utils_mock = {
-        "json.find_json": MagicMock(side_effect=ValueError()),
-    }
+    utils_mock = MagicMock(side_effect=ValueError())
     salt_mock = {
-        "cmd.run_all": MagicMock(
-            return_value={"retcode": 0, "stdout": "Not found", "stderr": ""}
-        ),
+        "cmd.run_all": MagicMock(return_value={"retcode": 0, "stdout": "Not found", "stderr": ""}),
     }
-    with patch.dict(tu.__utils__, utils_mock), patch.dict(tu.__salt__, salt_mock):
+    with patch("salt.utils.json.find_json", utils_mock), patch.dict(tu.__salt__, salt_mock):
         assert tu.call("test.ping") == {
             "result": False,
             "retcode": 1,
@@ -395,13 +366,11 @@ def test_call_fails_function():
 
 def test_call_success_no_reboot():
     """Test transactional_update.chroot when succeed"""
-    utils_mock = {
-        "json.find_json": MagicMock(return_value={"return": "result"}),
-    }
+    utils_mock = MagicMock(return_value={"return": "result"})
     salt_mock = {
         "cmd.run_all": MagicMock(return_value={"retcode": 0, "stdout": ""}),
     }
-    with patch.dict(tu.__utils__, utils_mock), patch.dict(tu.__salt__, salt_mock):
+    with patch("salt.utils.json.find_json", utils_mock), patch.dict(tu.__salt__, salt_mock):
         assert tu.call("test.ping") == "result"
 
         salt_mock["cmd.run_all"].assert_called_with(
@@ -429,23 +398,20 @@ def test_call_success_reboot():
     """Test transactional_update.chroot when succeed and reboot"""
     pending_transaction_mock = MagicMock(return_value=True)
     reboot_mock = MagicMock()
-    utils_mock = {
-        "json.find_json": MagicMock(return_value={"return": "result"}),
-    }
+    utils_mock = MagicMock(return_value={"return": "result"})
     salt_mock = {
         "cmd.run_all": MagicMock(return_value={"retcode": 0, "stdout": ""}),
     }
-    with patch.dict(tu.__utils__, utils_mock), patch.dict(
-        tu.__salt__, salt_mock
-    ), patch.dict(tu.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.pending_transaction",
-        pending_transaction_mock,
-    ), patch(
-        "salt.modules.transactional_update.reboot", reboot_mock
+    with (
+        patch("salt.utils.json.find_json", utils_mock),
+        patch.dict(tu.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.pending_transaction",
+            pending_transaction_mock,
+        ),
+        patch("saltext.transactional_update.modules.transactional_update.reboot", reboot_mock),
     ):
-        assert (
-            tu.call("transactional_update.dup", activate_transaction=True) == "result"
-        )
+        assert tu.call("transactional_update.dup", activate_transaction=True) == "result"
 
         salt_mock["cmd.run_all"].assert_called_with(
             [
@@ -472,13 +438,13 @@ def test_call_success_reboot():
 
 def test_call_success_parameters():
     """Test transactional_update.chroot when succeed with parameters"""
-    utils_mock = {
-        "json.find_json": MagicMock(return_value={"return": "result"}),
-    }
+    utils_mock = MagicMock(return_value={"return": "result"})
+
     salt_mock = {
         "cmd.run_all": MagicMock(return_value={"retcode": 0, "stdout": ""}),
     }
-    with patch.dict(tu.__utils__, utils_mock), patch.dict(tu.__salt__, salt_mock):
+
+    with patch("salt.utils.json.find_json", utils_mock), patch.dict(tu.__salt__, salt_mock):
         assert tu.call("module.function", key="value") == "result"
 
         salt_mock["cmd.run_all"].assert_called_with(
@@ -508,8 +474,12 @@ def test_sls():
     salt_mock = {
         "saltutil.is_running": MagicMock(return_value=[]),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.sls("module") == "result"
 
@@ -530,8 +500,12 @@ def test_sls_queue_true():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.sls("module", queue=True) == "result"
 
@@ -552,8 +526,12 @@ def test_sls_queue_false_failing():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.sls("module", queue=False) == [
             'The function "state.running" is running as PID 4126 and was started at 2015, Mar 25 12:34:07.204096 with jid 20150325123407204096'
@@ -565,8 +543,12 @@ def test_highstate():
     salt_mock = {
         "saltutil.is_running": MagicMock(return_value=[]),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.highstate() == "result"
 
@@ -587,8 +569,12 @@ def test_highstate_queue_true():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.highstate(queue=True) == "result"
 
@@ -609,8 +595,12 @@ def test_highstate_queue_false_failing():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.highstate(queue=False) == [
             'The function "state.running" is running as PID 4126 and was started at 2015, Mar 25 12:34:07.204096 with jid 20150325123407204096'
@@ -622,8 +612,12 @@ def test_single():
     salt_mock = {
         "saltutil.is_running": MagicMock(return_value=[]),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.single("pkg.installed", name="emacs") == "result"
 
@@ -644,8 +638,12 @@ def test_single_queue_false_failing():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.single("pkg.installed", name="emacs", queue=False) == [
             'The function "state.running" is running as PID 4126 and was started at 2015, Mar 25 12:34:07.204096 with jid 20150325123407204096'
@@ -668,7 +666,11 @@ def test_single_queue_true():
             ]
         ),
     }
-    with patch.dict(statemod.__salt__, salt_mock), patch(
-        "salt.modules.transactional_update.call", MagicMock(return_value="result")
+    with (
+        patch.dict(statemod.__salt__, salt_mock),
+        patch(
+            "saltext.transactional_update.modules.transactional_update.call",
+            MagicMock(return_value="result"),
+        ),
     ):
         assert tu.single("pkg.installed", name="emacs", queue=True) == "result"

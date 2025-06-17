@@ -106,14 +106,10 @@ def execute(opts, data, func, args, kwargs):
     module, _ = fun.split(".")
 
     delegated_modules = set(opts.get("delegated_modules", DEFAULT_DELEGATED_MODULES))
-    delegated_functions = set(
-        opts.get("delegated_functions", DEFAULT_DELEGATED_FUNCTIONS)
-    )
+    delegated_functions = set(opts.get("delegated_functions", DEFAULT_DELEGATED_FUNCTIONS))
     if "executor_opts" in data:
         delegated_modules |= set(data["executor_opts"].get("add_delegated_modules", []))
-        delegated_functions |= set(
-            data["executor_opts"].get("add_delegated_functions", [])
-        )
+        delegated_functions |= set(data["executor_opts"].get("add_delegated_functions", []))
     else:
         delegated_modules |= set(opts.get("add_delegated_modules", []))
         delegated_functions |= set(opts.get("add_delegated_functions", []))
@@ -122,9 +118,7 @@ def execute(opts, data, func, args, kwargs):
         result = __executors__["direct_call.execute"](
             opts, data, __salt__[DELEGATION_MAP[fun]], args, kwargs
         )
-    elif (
-        module in delegated_modules or fun in delegated_functions
-    ) and not inside_transaction:
+    elif (module in delegated_modules or fun in delegated_functions) and not inside_transaction:
         result = __salt__["transactional_update.call"](fun, *args, **kwargs)
     else:
         result = __executors__["direct_call.execute"](opts, data, func, args, kwargs)
